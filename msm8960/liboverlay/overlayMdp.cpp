@@ -213,8 +213,8 @@ void MdpCtrl3D::dump() const {
 }
 
 bool MdpCtrl::setVisualParams(const MetaData_t& data) {
-#ifdef USES_POST_PROCESSING
     bool needUpdate = false;
+#ifdef USES_POST_PROCESSING
     /* calculate the data */
     if (data.operation & PP_PARAM_HSIC) {
         if (mParams.params.pa_params.hue != data.hsicData.hue) {

@@ -121,7 +121,8 @@ unsigned int CopyBit::getRGBRenderingArea
     //Calculates total rendering area for RGB layers
     unsigned int renderArea = 0;
     unsigned int w=0, h=0;
-    for (unsigned int i=0; i<list->numHwLayers; i++) {
+    //Do not include Framebuffer area in calculating total area
+    for (unsigned int i=0; i<(list->numHwLayers)-1; i++) {
          private_handle_t *hnd = (private_handle_t *)list->hwLayers[i].handle;
          if (hnd) {
              if (BUFFER_TYPE_UI == hnd->bufferType) {
@@ -252,6 +253,7 @@ bool CopyBit::draw(hwc_context_t *ctx, hwc_display_contents_1_t *list,
     clear(renderBuffer, clearRegion);
     // numAppLayers-1, as we iterate from 0th layer index with HWC_COPYBIT flag
     for (int i = 0; i <= (ctx->listStats[dpy].numAppLayers-1); i++) {
+        hwc_layer_1_t *layer = &list->hwLayers[i];
         if(!(layerProp[i].mFlags & HWC_COPYBIT)) {
             ALOGD_IF(DEBUG_COPYBIT, "%s: Not Marked for copybit", __FUNCTION__);
             continue;
@@ -414,7 +416,7 @@ int  CopyBit::drawLayerUsingCopybit(hwc_context_t *dev, hwc_layer_1_t *layer,
        }
        ALOGE("%s:%d::tmp_w = %d,tmp_h = %d",__FUNCTION__,__LINE__,tmp_w,tmp_h);
 
-       int usage = GRALLOC_USAGE_PRIVATE_IOMMU_HEAP;
+       int usage = GRALLOC_USAGE_PRIVATE_IOMMU_HEAP | GRALLOC_USAGE_PRIVATE_UI_CONTIG_HEAP;
 
        if (0 == alloc_buffer(&tmpHnd, tmp_w, tmp_h, fbHandle->format, usage)){
             copybit_image_t tmp_dst;
@@ -512,7 +514,7 @@ int CopyBit::allocRenderBuffers(int w, int h, int f)
         if (mRenderBuffer[i] == NULL) {
             ret = alloc_buffer(&mRenderBuffer[i],
                                w, h, f,
-                               GRALLOC_USAGE_PRIVATE_IOMMU_HEAP);
+                               GRALLOC_USAGE_PRIVATE_IOMMU_HEAP | GRALLOC_USAGE_PRIVATE_UI_CONTIG_HEAP);
         }
         if(ret < 0) {
             freeRenderBuffers();

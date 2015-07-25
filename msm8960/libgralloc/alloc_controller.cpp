@@ -45,12 +45,14 @@
 #define VENUS_BUFFER_SIZE(args...) 0
 #endif
 
+#ifndef ION_ADSP_HEAP_ID
+#define ION_ADSP_HEAP_ID ION_CAMERA_HEAP_ID
+#endif
+
 using namespace gralloc;
 using namespace qdutils;
 
-namespace android {
 ANDROID_SINGLETON_STATIC_INSTANCE(AdrenoMemInfo);
-}
 
 //Common functions
 static bool canFallback(int usage, bool triedSystem)
@@ -77,10 +79,10 @@ static bool canFallback(int usage, bool triedSystem)
 
 static bool useUncached(int usage)
 {
-    // System heaps cannot be uncached
-    if(usage & GRALLOC_USAGE_PRIVATE_SYSTEM_HEAP)
-        return false;
     if (usage & GRALLOC_USAGE_PRIVATE_UNCACHED)
+        return true;
+    if(((usage & GRALLOC_USAGE_SW_WRITE_MASK) == GRALLOC_USAGE_SW_WRITE_RARELY)
+       ||((usage & GRALLOC_USAGE_SW_READ_MASK) == GRALLOC_USAGE_SW_READ_RARELY))
         return true;
     return false;
 }
@@ -174,12 +176,21 @@ IAllocController* IAllocController::getInstance(void)
 IonController::IonController()
 {
     mIonAlloc = new IonAlloc();
+    mUseTZProtection = false;
+    char property[PROPERTY_VALUE_MAX];
+    if ((property_get("persist.gralloc.cp.level3", property, NULL) <= 0) ||
+                            (atoi(property) != 1)) {
+        mUseTZProtection = true;
+    }
 }
 
 int IonController::allocate(alloc_data& data, int usage)
 {
     int ionFlags = 0;
     int ret;
+#ifndef SECURE_MM_HEAP
+    bool noncontig = false;
+#endif
 
     data.uncached = useUncached(usage);
     data.allocType = 0;
@@ -187,33 +198,54 @@ int IonController::allocate(alloc_data& data, int usage)
     if(usage & GRALLOC_USAGE_PRIVATE_UI_CONTIG_HEAP)
         ionFlags |= ION_HEAP(ION_SF_HEAP_ID);
 
-    if(usage & GRALLOC_USAGE_PRIVATE_SYSTEM_HEAP)
+    if(usage & GRALLOC_USAGE_PRIVATE_SYSTEM_HEAP) {
         ionFlags |= ION_HEAP(ION_SYSTEM_HEAP_ID);
+#ifndef SECURE_MM_HEAP
+        noncontig = true;
+#endif
 
-    if(usage & GRALLOC_USAGE_PRIVATE_IOMMU_HEAP)
+    if(usage & GRALLOC_USAGE_PRIVATE_IOMMU_HEAP) {
         ionFlags |= ION_HEAP(ION_IOMMU_HEAP_ID);
+#ifndef SECURE_MM_HEAP
+        noncontig = true;
+#endif
+    }
 
-    //MM Heap is exclusively a secure heap.
-    if(usage & GRALLOC_USAGE_PRIVATE_MM_HEAP) {
-        //XXX: Right now the MM heap is the only secure heap we have. When we
-        //have other secure heaps, we can change this.
-        if(usage & GRALLOC_USAGE_PROTECTED) {
+#ifdef SECURE_MM_HEAP
+    if(usage & GRALLOC_USAGE_PROTECTED) {
+        if ((mUseTZProtection) && (usage & GRALLOC_USAGE_PRIVATE_MM_HEAP)) {
             ionFlags |= ION_HEAP(ION_CP_MM_HEAP_ID);
             ionFlags |= ION_SECURE;
-        }
-        else {
-            ALOGW("GRALLOC_USAGE_PRIVATE_MM_HEAP \
-                  cannot be used as an insecure heap!\
-                  trying to use IOMMU instead !!");
+        } else {
+            // for targets/OEMs which do not need HW level protection
+            // do not set ion secure flag & MM heap. Fallback to IOMMU heap.
             ionFlags |= ION_HEAP(ION_IOMMU_HEAP_ID);
         }
+    } else
+#endif
+       if(usage & GRALLOC_USAGE_PRIVATE_MM_HEAP) {
+#ifdef SECURE_MM_HEAP
+        //MM Heap is exclusively a secure heap.
+        //If it is used for non secure cases, fallback to IOMMU heap
+        ALOGW("GRALLOC_USAGE_PRIVATE_MM_HEAP \
+                                cannot be used as an insecure heap!\
+                                trying to use IOMMU instead !!");
+        ionFlags |= ION_HEAP(ION_IOMMU_HEAP_ID);
+#else
+        ionFlags |= ION_HEAP(ION_CP_MM_HEAP_ID);
+#endif
     }
 
     if(usage & GRALLOC_USAGE_PRIVATE_CAMERA_HEAP)
-        ionFlags |= ION_HEAP(ION_CAMERA_HEAP_ID);
+        ionFlags |= ION_HEAP(ION_ADSP_HEAP_ID);
 
-    if(usage & GRALLOC_USAGE_PROTECTED)
-         data.allocType |= private_handle_t::PRIV_FLAGS_SECURE_BUFFER;
+#ifdef SECURE_MM_HEAP
+    if(ionFlags & ION_SECURE)
+        data.allocType |= private_handle_t::PRIV_FLAGS_SECURE_BUFFER;
+#else
+    if (usage & GRALLOC_USAGE_PROTECTED && !noncontig)
+        data.allocType |= ION_SECURE;
+#endif
 
     // if no flags are set, default to
     // SF + IOMMU heaps, so that bypass can work
@@ -231,11 +263,20 @@ int IonController::allocate(alloc_data& data, int usage)
     {
         ALOGW("Falling back to system heap");
         data.flags = ION_HEAP(ION_SYSTEM_HEAP_ID);
+#ifndef SECURE_MM_HEAP
+        noncontig = true;
+#endif
         ret = mIonAlloc->alloc_buffer(data);
     }
 
     if(ret >= 0 ) {
         data.allocType |= private_handle_t::PRIV_FLAGS_USES_ION;
+#ifndef SECURE_MM_HEAP
+        if (noncontig)
+            data.allocType |= private_handle_t::PRIV_FLAGS_NONCONTIGUOUS_MEM;
+        if(ionFlags & ION_SECURE)
+            data.allocType |= private_handle_t::PRIV_FLAGS_SECURE_BUFFER;
+#endif
     }
 
     return ret;
@@ -316,7 +357,7 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
         case HAL_PIXEL_FORMAT_YCbCr_420_SP:
         case HAL_PIXEL_FORMAT_YCrCb_420_SP:
             alignedh = height;
-            size = ALIGN((alignedw*alignedh) + (alignedw* alignedh)/2, 4096);
+            size = ALIGN((alignedw*alignedh) + (alignedw* alignedh)/2 + 1, 4096);
             break;
         case HAL_PIXEL_FORMAT_YCbCr_422_SP:
         case HAL_PIXEL_FORMAT_YCrCb_422_SP:
