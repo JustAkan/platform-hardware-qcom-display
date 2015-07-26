@@ -103,8 +103,6 @@ enum {
     HAL_PIXEL_FORMAT_RG_88                  = 0x10E,
     HAL_PIXEL_FORMAT_YCbCr_444_SP           = 0x10F,
     HAL_PIXEL_FORMAT_YCrCb_444_SP           = 0x110,
-    HAL_PIXEL_FORMAT_YCrCb_422_I            = 0x111,
-    HAL_PIXEL_FORMAT_NV21_ZSL               = 0x112,
     HAL_PIXEL_FORMAT_INTERLACE              = 0x180,
 
 };
@@ -166,7 +164,6 @@ struct private_handle_t : public native_handle {
             PRIV_FLAGS_ITU_R_601          = 0x00200000,
             PRIV_FLAGS_ITU_R_601_FR       = 0x00400000,
             PRIV_FLAGS_ITU_R_709          = 0x00800000,
-            PRIV_FLAGS_SECURE_DISPLAY     = 0x01000000,
         };
 
         // file-descriptors
@@ -175,14 +172,9 @@ struct private_handle_t : public native_handle {
         // ints
         int     magic;
         int     flags;
-#ifdef QCOM_BSP_CAMERA_ABI_HACK
-        int     bufferType;
-#endif
         int     size;
         int     offset;
-#ifndef QCOM_BSP_CAMERA_ABI_HACK
-         int     bufferType;
-#endif
+        int     bufferType;
         int     base;
         int     offset_metadata;
         // The gpu address mapped into the mmu.
@@ -201,14 +193,7 @@ struct private_handle_t : public native_handle {
                          int format,int width, int height, int eFd = -1,
                          int eOffset = 0, int eBase = 0) :
             fd(fd), fd_metadata(eFd), magic(sMagic),
-            flags(flags),
-#ifdef QCOM_BSP_CAMERA_ABI_HACK
-            bufferType(bufferType),
-#endif
-            size(size), offset(0),
-#ifndef QCOM_BSP_CAMERA_ABI_HACK
-            bufferType(bufferType),
-#endif
+            flags(flags), size(size), offset(0), bufferType(bufferType),
             base(0), offset_metadata(eOffset), gpuaddr(0),
             format(format), width(width), height(height),
             base_metadata(eBase)
