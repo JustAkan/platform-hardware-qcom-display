@@ -105,7 +105,7 @@ C2D_STATUS (*LINK_c2dFillSurface) ( uint32 surface_id, uint32 fill_color,
 
 // The following defines can be changed as required i.e. as we encounter
 // complex use cases.
-#define MAX_RGB_SURFACES 8        // Max. RGB layers currently supported per draw
+#define MAX_RGB_SURFACES 32       // Max. RGB layers currently supported per draw
 #define MAX_YUV_2_PLANE_SURFACES 4// Max. 2-plane YUV layers currently supported per draw
 #define MAX_YUV_3_PLANE_SURFACES 1// Max. 3-plane YUV layers currently supported per draw
 // +1 for the destination surface. We cannot have multiple destination surfaces.
@@ -1387,8 +1387,8 @@ static int blit_copybit(
 {
     int status = COPYBIT_SUCCESS;
     struct copybit_context_t* ctx = (struct copybit_context_t*)dev;
-    struct copybit_rect_t dr = { 0, 0, dst->w, dst->h };
-    struct copybit_rect_t sr = { 0, 0, src->w, src->h };
+    struct copybit_rect_t dr = { 0, 0, (int)dst->w, (int)dst->h };
+    struct copybit_rect_t sr = { 0, 0, (int)src->w, (int)src->h };
     pthread_mutex_lock(&ctx->wait_cleanup_lock);
     status = stretch_copybit_internal(dev, dst, src, &dr, &sr, region, false);
     pthread_mutex_unlock(&ctx->wait_cleanup_lock);
