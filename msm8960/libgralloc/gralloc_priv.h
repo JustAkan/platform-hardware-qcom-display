@@ -181,7 +181,7 @@ struct private_handle_t : public native_handle {
         int     size;
         int     offset;
 #ifndef QCOM_BSP_CAMERA_ABI_HACK
-         int     bufferType;
+        int     bufferType;
 #endif
         int     base;
         int     offset_metadata;

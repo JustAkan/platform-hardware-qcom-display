@@ -203,6 +203,7 @@ int IonController::allocate(alloc_data& data, int usage)
 #ifndef SECURE_MM_HEAP
         noncontig = true;
 #endif
+    }
 
     if(usage & GRALLOC_USAGE_PRIVATE_IOMMU_HEAP) {
         ionFlags |= ION_HEAP(ION_IOMMU_HEAP_ID);
@@ -210,6 +211,7 @@ int IonController::allocate(alloc_data& data, int usage)
         noncontig = true;
 #endif
     }
+
 
 #ifdef SECURE_MM_HEAP
     if(usage & GRALLOC_USAGE_PROTECTED) {
